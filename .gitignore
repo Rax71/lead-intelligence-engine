@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .next/
 .env*
 !.env.example
@@ -10,13 +10,4 @@
 *.diagnostico-backup
 *.tsbuildinfo
 .DS_Store
-normalizeForMatch(value))
-typeof
-{
-*.tsbuildinfo
-*.backup
-*.backup-*
 *-backup
-*.BEFORE-*
-*.before-*
-*.diagnostico-backup
