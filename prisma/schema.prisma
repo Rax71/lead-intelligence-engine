@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Client {
+  id               String            @id @default(cuid())
+  businessName     String
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  clientProfiles   ClientProfile[]
+  interviewStates  InterviewState[]
+  leads            Lead[]
+  prospectionSpecs ProspectionSpec[]
+  runs             Run[]
+
+  @@map("clients")
+}
+
+model InterviewState {
+  id                String          @id @default(cuid())
+  clientId          String
+  answeredFields    Json            @default("{}")
+  unknownFields     Json            @default("[]")
+  inferredFields    Json            @default("{}")
+  conflictingFields Json            @default("[]")
+  confidence        Json            @default("{}")
+  activeBranch      String?
+  completedBranches Json            @default("[]")
+  pendingBranches   Json            @default("[]")
+  profileReadiness  Int             @default(0)
+  status            InterviewStatus @default(IN_PROGRESS)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  transcript        Json            @default("[]")
+  client            Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("interview_states")
+}
+
+model ClientProfile {
+  id                      String            @id @default(cuid())
+  clientId                String
+  businessType            String?
+  professionalType        String?
+  industry                String?
+  subindustry             String?
+  productsServices        Json?
+  businessModel           String?
+  idealCustomer           String?
+  icp                     Json?
+  targetSegments          Json?
+  prioritySegments        Json?
+  geography               Json?
+  preferredLocations      Json?
+  radiusKm                Float?
+  companySize             String?
+  employeeRange           Json?
+  revenueRange            Json?
+  ticketRange             Json?
+  decisionMaker           Json?
+  painPoints              Json?
+  needs                   Json?
+  intentSignals           Json?
+  buyingSignals           Json?
+  growthSignals           Json?
+  urgencySignals          Json?
+  positiveCharacteristics Json?
+  negativeCharacteristics Json?
+  exclusions              Json?
+  preferredSources        Json?
+  preferredChannels       Json?
+  contactRequirements     Json?
+  recencyRequirements     Json?
+  scoringPreferences      Json?
+  outreachPreferences     Json?
+  successDefinition       String?
+  constraints             Json?
+  assumptions             Json?
+  confidence              Json?
+  profileReadiness        Int               @default(0)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  approved                Boolean           @default(false)
+  approvedAt              DateTime?
+  client                  Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  prospectionSpecs        ProspectionSpec[]
+
+  @@index([clientId])
+  @@map("client_profiles")
+}
+
+model ProspectionSpec {
+  id                String        @id @default(cuid())
+  clientId          String
+  clientProfileId   String
+  target            Json
+  location          Json
+  what              Json
+  discoveryStrategy Json
+  intentSignals     Json
+  exclusions        Json
+  dataRequired      Json
+  scoringRules      Json
+  stopCriteria      Json
+  approved          Boolean       @default(false)
+  approvedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientProfile     ClientProfile @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+  runs              Run[]
+
+  @@index([clientId])
+  @@map("prospection_specs")
+}
+
+model ActorRegistryEntry {
+  id               String    @id @default(cuid())
+  actorId          String    @unique
+  name             String
+  provider         String
+  purpose          String
+  inputSchema      Json?
+  outputSchema     Json?
+  pricingModel     String?
+  estimatedCost    Float?
+  maxItems         Int?
+  allowed          Boolean   @default(true)
+  supportedSources Json?
+  lastVerified     DateTime?
+  notes            String?
+  runs             Run[]
+
+  @@map("actor_registry")
+}
+
+model Run {
+  id                 String              @id @default(cuid())
+  clientId           String
+  prospectionSpecId  String
+  actorRegistryId    String?
+  status             RunStatus           @default(ESTIMATED)
+  maxItems           Int?
+  maxRunCost         Float?
+  estimatedCost      Float?
+  actualCost         Float?
+  itemsCollected     Int                 @default(0)
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  rawItems           Json?
+  leads              Lead[]
+  actorRegistryEntry ActorRegistryEntry? @relation(fields: [actorRegistryId], references: [id])
+  client             Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  prospectionSpec    ProspectionSpec     @relation(fields: [prospectionSpecId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("runs")
+}
+
+model Lead {
+  id                 String          @id @default(cuid())
+  clientId           String
+  runId              String?
+  companyName        String
+  personName         String?
+  role               String?
+  phone              String?
+  whatsapp           String?
+  email              String?
+  website            String?
+  address            String?
+  city               String?
+  neighborhood       String?
+  industry           String?
+  subindustry        String?
+  employeeEstimate   String?
+  companyAgeEstimate String?
+  intentLevel        String?
+  leadScore          Int?
+  confidenceScore    Int?
+  temperature        String?
+  fitReasons         Json?
+  intentReasons      Json?
+  painReasons        Json?
+  negativeSignals    Json?
+  evidence           Json?
+  sources            Json?
+  recommendedAction  String?
+  recommendedChannel String?
+  status             LeadStatus      @default(NEW)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  identityKey        String?
+  placeId            String?
+  intentSource       String?
+  feedbackEvents     FeedbackEvent[]
+  client             Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  run                Run?            @relation(fields: [runId], references: [id])
+
+  @@unique([clientId, identityKey])
+  @@index([clientId])
+  @@index([runId])
+  @@index([leadScore])
+  @@index([temperature])
+  @@index([clientId, placeId])
+  @@map("leads")
+}
+
+model FeedbackEvent {
+  id        String            @id @default(cuid())
+  leadId    String
+  eventType FeedbackEventType
+  notes     String?
+  createdAt DateTime          @default(now())
+  lead      Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("feedback_events")
+}
+
+enum InterviewStatus {
+  IN_PROGRESS
+  READY
+  APPROVED
+}
+
+enum RunStatus {
+  ESTIMATED
+  PENDING_APPROVAL
+  RUNNING
+  COMPLETED
+  FAILED
+  BLOCKED_COST_LIMIT
+}
+
+enum LeadStatus {
+  NEW
+  REVIEWED
+  CONTACTED
+  DISCARDED
+}
+
+enum FeedbackEventType {
+  CONTACTED
+  RESPONDED
+  INTERESTED
+  MEETING
+  PROPOSAL
+  SALE
+  NO_RESPONSE
+  WRONG_DATA
+  NO_FIT
+  LOST
+}
