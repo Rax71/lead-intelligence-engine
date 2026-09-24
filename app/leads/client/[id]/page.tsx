@@ -1,7 +1,9 @@
 ﻿"use client";
 
 import { useEffect, useState, Fragment } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
+import type { LeadPackage } from "@/lib/lead-package";
 
 type LeadRow = {
   id: string;
@@ -62,6 +64,47 @@ function formatFeedbackDate(value: string) {
   return new Date(value).toLocaleString("pt-BR");
 }
 
+// Renderiza valores Json?/unknown do contexto da campanha (ProspectionSpec)
+// de forma legível, sem nunca despejar o objeto bruto na tela.
+function describeUnknown(value: unknown): string {
+  if (value === null || value === undefined) return "Não informado";
+
+  if (typeof value === "string") {
+    return value.trim() || "Não informado";
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => (typeof item === "string" ? item : describeUnknown(item)))
+      .filter((item) => item && item !== "Não informado");
+    return parts.length > 0 ? parts.join("; ") : "Não informado";
+  }
+
+  if (typeof value === "object") {
+    const parts = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+      .map(([k, v]) => `${k}: ${typeof v === "string" ? v : describeUnknown(v)}`);
+    return parts.length > 0 ? parts.join(" · ") : "Não informado";
+  }
+
+  return String(value);
+}
+
+const PRIORITY_STYLES: Record<string, { background: string; color: string }> = {
+  ALTA: { background: "rgba(79, 209, 165, 0.15)", color: "var(--signal)" },
+  MEDIA: { background: "rgba(232, 163, 61, 0.15)", color: "#e8a33d" },
+  REVISAO_MANUAL: { background: "rgba(139, 151, 166, 0.15)", color: "var(--text-muted)" },
+};
+
+const sectionTitleStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--text-muted)",
+  marginBottom: 6,
+};
+
 export default function ClientLeadsPage({
   params,
 }: {
@@ -84,6 +127,15 @@ export default function ClientLeadsPage({
   >({});
   const [feedbackLoading, setFeedbackLoading] = useState<string | null>(null);
   const [feedbackHistoryError, setFeedbackHistoryError] = useState<
+    Record<string, string>
+  >({});
+  const [leadPackages, setLeadPackages] = useState<
+    Record<string, LeadPackage>
+  >({});
+  const [leadPackageLoading, setLeadPackageLoading] = useState<string | null>(
+    null
+  );
+  const [leadPackageError, setLeadPackageError] = useState<
     Record<string, string>
   >({});
 
@@ -137,12 +189,43 @@ export default function ClientLeadsPage({
     }
   }
 
+  async function loadLeadPackage(leadId: string) {
+    setLeadPackageLoading(leadId);
+    setLeadPackageError((current) => ({ ...current, [leadId]: "" }));
+
+    try {
+      const res = await fetch(`/api/leads/${leadId}/package`);
+
+      if (!res.ok) {
+        throw new Error("Falha ao carregar Lead Package");
+      }
+
+      const data = (await res.json()) as LeadPackage;
+
+      setLeadPackages((current) => ({
+        ...current,
+        [leadId]: data,
+      }));
+    } catch {
+      setLeadPackageError((current) => ({
+        ...current,
+        [leadId]: "Não foi possível carregar o Lead Package.",
+      }));
+    } finally {
+      setLeadPackageLoading(null);
+    }
+  }
+
   function toggleExpanded(leadId: string) {
     const next = expanded === leadId ? null : leadId;
     setExpanded(next);
 
     if (next && feedbackHistory[next] === undefined) {
       loadFeedbackHistory(next);
+    }
+
+    if (next && leadPackages[next] === undefined) {
+      loadLeadPackage(next);
     }
   }
 
@@ -595,6 +678,370 @@ export default function ClientLeadsPage({
                               </span>
                             </p>
                           )}
+
+                          <div
+                            style={{
+                              marginTop: 18,
+                              padding: 12,
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--radius)",
+                            }}
+                          >
+                            <strong style={{ fontSize: 13 }}>
+                              Lead Package
+                            </strong>
+
+                            {leadPackageLoading === lead.id && (
+                              <p style={{ fontSize: 12, margin: "8px 0 0" }}>
+                                Carregando Lead Package...
+                              </p>
+                            )}
+
+                            {leadPackageError[lead.id] && (
+                              <p
+                                className="error"
+                                style={{ fontSize: 12, margin: "8px 0 0" }}
+                              >
+                                {leadPackageError[lead.id]}
+                              </p>
+                            )}
+
+                            {(() => {
+                              const pkg = leadPackages[lead.id];
+                              if (!pkg) return null;
+
+                              return (
+                                <div
+                                  style={{
+                                    marginTop: 10,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 16,
+                                  }}
+                                >
+                                  {/* 1. IDENTIFICAÇÃO */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>
+                                      1. Identificação
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns:
+                                          "repeat(auto-fit, minmax(180px, 1fr))",
+                                        gap: "4px 16px",
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <div>
+                                        Empresa: {pkg.identification.companyName || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Pessoa: {pkg.identification.personName || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Cargo: {pkg.identification.role || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Segmento: {pkg.identification.industry || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Subsegmento: {pkg.identification.subindustry || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Endereço: {pkg.identification.address || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Cidade: {pkg.identification.city || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Bairro: {pkg.identification.neighborhood || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Telefone: {pkg.identification.phone || "Não informado"}
+                                      </div>
+                                      <div>
+                                        WhatsApp: {pkg.identification.whatsapp || "Não informado"}
+                                      </div>
+                                      <div>
+                                        E-mail: {pkg.identification.email || "Não informado"}
+                                      </div>
+                                      <div>
+                                        Website: {pkg.identification.website || "Não informado"}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* 2. CONTEXTO DA OPORTUNIDADE */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>
+                                      2. Contexto da oportunidade
+                                    </div>
+                                    {!pkg.context.available && (
+                                      <p
+                                        style={{
+                                          fontSize: 12,
+                                          color: "var(--text-muted)",
+                                          margin: 0,
+                                        }}
+                                      >
+                                        Contexto de campanha não disponível para este lead.
+                                      </p>
+                                    )}
+                                    {pkg.context.available && (
+                                      <div
+                                        style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}
+                                      >
+                                        <div>Target: {describeUnknown(pkg.context.target)}</div>
+                                        <div>Localização: {describeUnknown(pkg.context.location)}</div>
+                                        <div>O que está sendo prospectado: {describeUnknown(pkg.context.what)}</div>
+                                        <div>Estratégia de descoberta: {describeUnknown(pkg.context.discoveryStrategy)}</div>
+                                        <div>Sinais de intenção da campanha: {describeUnknown(pkg.context.intentSignals)}</div>
+                                        <div>Exclusões relevantes: {describeUnknown(pkg.context.exclusions)}</div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* 3. FIT */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>3. FIT</div>
+                                    <p style={{ fontSize: 12, margin: "0 0 4px" }}>
+                                      Lead Score:{" "}
+                                      <span className="mono">{pkg.fit.leadScore ?? "—"}</span>
+                                    </p>
+                                    {pkg.fit.fitReasons.length > 0 ? (
+                                      <ul className="reasons-list">
+                                        {pkg.fit.fitReasons.map((r, i) => (
+                                          <li key={i}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                                        Nenhum motivo de FIT registrado.
+                                      </p>
+                                    )}
+                                    {pkg.fit.negativeSignals.length > 0 && (
+                                      <>
+                                        <p style={{ fontSize: 12, margin: "8px 0 0" }}>
+                                          Sinais negativos:
+                                        </p>
+                                        <ul className="reasons-list">
+                                          {pkg.fit.negativeSignals.map((r, i) => (
+                                            <li key={i}>{r}</li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* 4. INTENT */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>4. INTENT</div>
+                                    <p style={{ fontSize: 12, margin: "0 0 4px" }}>
+                                      Nível:{" "}
+                                      <span className="mono">{pkg.intent.intentLevel || "indeterminada"}</span>
+                                      {pkg.intent.intentSource && (
+                                        <span className="status-badge"> origem: {pkg.intent.intentSource}</span>
+                                      )}
+                                    </p>
+                                    {pkg.intent.isEvidenceInsufficient && (
+                                      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 4px" }}>
+                                        Evidência de intenção insuficiente — isso não significa baixa intenção,
+                                        apenas ausência de sinal identificado.
+                                      </p>
+                                    )}
+                                    {pkg.intent.intentReasons.length > 0 && (
+                                      <ul className="reasons-list">
+                                        {pkg.intent.intentReasons.map((r, i) => (
+                                          <li key={i}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+
+                                  {/* 5. EVIDÊNCIAS */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>5. Evidências</div>
+
+                                    <p style={{ fontSize: 12, margin: "0 0 2px" }}>Evidência de listagem/fonte:</p>
+                                    {pkg.evidence.listingEvidence.evidence.length > 0 ? (
+                                      <ul className="reasons-list">
+                                        {pkg.evidence.listingEvidence.evidence.map((item, i) => (
+                                          <li key={i}>
+                                            {item.summary || item.source || "Evidência de listagem"}
+                                            {item.url && (
+                                              <>
+                                                {" — "}
+                                                <a
+                                                  className="link"
+                                                  href={item.url}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  fonte
+                                                </a>
+                                              </>
+                                            )}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 4px" }}>
+                                        Nenhuma evidência de listagem registrada.
+                                      </p>
+                                    )}
+                                    {pkg.evidence.listingEvidence.sources.length > 0 && (
+                                      <p style={{ fontSize: 12, margin: "4px 0" }}>
+                                        Fontes: {pkg.evidence.listingEvidence.sources.join(", ")}
+                                      </p>
+                                    )}
+                                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px" }}>
+                                      {pkg.evidence.listingEvidence.caveat}
+                                    </p>
+
+                                    <p style={{ fontSize: 12, margin: "0 0 2px" }}>
+                                      Motivos de FIT (interpretação do scoring):
+                                    </p>
+                                    {pkg.evidence.scoringInterpretation.fitReasons.length > 0 ? (
+                                      <ul className="reasons-list">
+                                        {pkg.evidence.scoringInterpretation.fitReasons.map((r, i) => (
+                                          <li key={i}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 4px" }}>
+                                        Nenhum.
+                                      </p>
+                                    )}
+
+                                    <p style={{ fontSize: 12, margin: "8px 0 2px" }}>
+                                      Motivos de INTENT (interpretação do scoring):
+                                    </p>
+                                    {pkg.evidence.scoringInterpretation.intentReasons.length > 0 ? (
+                                      <ul className="reasons-list">
+                                        {pkg.evidence.scoringInterpretation.intentReasons.map((r, i) => (
+                                          <li key={i}>{r}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 4px" }}>
+                                        Nenhum.
+                                      </p>
+                                    )}
+
+                                    {pkg.evidence.scoringInterpretation.painReasons.length > 0 && (
+                                      <>
+                                        <p style={{ fontSize: 12, margin: "8px 0 2px" }}>Sinais de dor:</p>
+                                        <ul className="reasons-list">
+                                          {pkg.evidence.scoringInterpretation.painReasons.map((r, i) => (
+                                            <li key={i}>{r}</li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    )}
+
+                                    {pkg.evidence.scoringInterpretation.negativeSignals.length > 0 && (
+                                      <>
+                                        <p style={{ fontSize: 12, margin: "8px 0 2px" }}>Sinais negativos:</p>
+                                        <ul className="reasons-list">
+                                          {pkg.evidence.scoringInterpretation.negativeSignals.map((r, i) => (
+                                            <li key={i}>{r}</li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    )}
+
+                                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
+                                      {pkg.evidence.scoringInterpretation.caveat}
+                                    </p>
+                                  </div>
+
+                                  {/* 6. INFORMAÇÕES QUE FALTAM */}
+                                  {pkg.informationGaps.gaps.length > 0 && (
+                                    <div>
+                                      <div style={sectionTitleStyle}>
+                                        6. Informações que faltam
+                                      </div>
+                                      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 4px" }}>
+                                        Informações a descobrir — não são necessariamente problemas do lead:
+                                      </p>
+                                      <ul className="reasons-list">
+                                        {pkg.informationGaps.gaps.map((gap) => (
+                                          <li key={gap.code}>{gap.label}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+
+                                  {/* 7. PRIORIDADE OPERACIONAL */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>
+                                      7. Prioridade operacional
+                                    </div>
+                                    <span
+                                      className="temp-badge"
+                                      style={PRIORITY_STYLES[pkg.operationalPriority.priority]}
+                                    >
+                                      {pkg.operationalPriority.priority}
+                                    </span>
+                                    <p style={{ fontSize: 12, margin: "6px 0 0" }}>
+                                      {pkg.operationalPriority.rationale}
+                                    </p>
+                                  </div>
+
+                                  {/* 8. PRÓXIMA AÇÃO */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>8. Próxima ação</div>
+                                    <p style={{ fontSize: 12, margin: 0 }}>
+                                      {pkg.recommendedAction.recommendedAction || "Não informado"}
+                                    </p>
+                                    {pkg.recommendedAction.recommendedChannel && (
+                                      <p style={{ fontSize: 12, margin: "4px 0 0" }}>
+                                        Canal:{" "}
+                                        <span className="mono channel-hint">
+                                          {pkg.recommendedAction.recommendedChannel}
+                                        </span>
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* 9. HISTÓRICO */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>9. Histórico</div>
+                                    {!pkg.history.hasHistory && (
+                                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                                        Sem histórico de contato registrado.
+                                      </p>
+                                    )}
+                                    {pkg.history.hasHistory && (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                        {pkg.history.events.map((event) => (
+                                          <div key={event.id} style={{ fontSize: 12 }}>
+                                            <strong>{feedbackLabel(event.eventType)}</strong>{" "}
+                                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                              {formatFeedbackDate(String(event.createdAt))}
+                                            </span>
+                                            {event.notes && (
+                                              <div style={{ fontSize: 12 }}>{event.notes}</div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* 10. ESTADO COMERCIAL */}
+                                  <div>
+                                    <div style={sectionTitleStyle}>10. Estado comercial</div>
+                                    <p style={{ fontSize: 12, margin: 0 }}>
+                                      {pkg.commercialStage.derivedStageLabel}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </td>
                       </tr>
                     )}
