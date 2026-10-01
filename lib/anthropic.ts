@@ -1,6 +1,31 @@
-﻿const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const ANTHROPIC_MODE = process.env.ANTHROPIC_MODE || "real";
+const LLM_PROVIDER = process.env.LLM_PROVIDER || 'anthropic';
+
+
+async function callBedrock(params: {
+  system: string;
+  messages: ClaudeMessage[];
+  maxTokens?: number;
+}): Promise<string> {
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const modelId = process.env.BEDROCK_MODEL_ID;
+  if (!modelId) throw new Error('BEDROCK_MODEL_ID not configured.');
+  const client = new BedrockRuntimeClient({ region });
+  const command = new ConverseCommand({
+    modelId,
+    system: [{ text: params.system }],
+    messages: params.messages.map((message) => ({ role: message.role, content: [{ text: message.content }] })),
+    inferenceConfig: { maxTokens: params.maxTokens ?? 2000 }
+  });
+  const response = await client.send(command);
+  const textBlocks = response.output?.message?.content?.filter((block) => block.text);
+  if (!textBlocks || textBlocks.length === 0) throw new Error('Amazon Bedrock response did not contain a text block.');
+  return textBlocks.map((block) => block.text).join('');
+}
 
 export type ClaudeMessage = {
   role: "user" | "assistant";
@@ -1384,6 +1409,9 @@ export async function callClaude(params: {
   messages: ClaudeMessage[];
   maxTokens?: number;
 }): Promise<string> {
+  if (LLM_PROVIDER === 'bedrock') {
+    return callBedrock(params);
+  }
   if (ANTHROPIC_MODE === "mock") {
     console.log(
       "[CLAUDE] Modo MOCK ativo → nenhuma chamada à Anthropic foi realizada."
@@ -1410,6 +1438,11 @@ export async function callClaude(params: {
     return mockInterviewResponse({
       messages: params.messages
     });
+  }
+
+
+  if (LLM_PROVIDER !== 'anthropic') {
+    throw new Error(`Unsupported LLM_PROVIDER: ${LLM_PROVIDER}. Supported providers: anthropic, bedrock.`);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
