@@ -265,7 +265,6 @@ export async function executeProspectionRun(params: {
   const input = buildGoogleMapsInput(spec, maxItems);
 
   console.log("[APIFY ADAPTER] Actor:", actor.actorId);
-  console.log("[APIFY ADAPTER] Input:", JSON.stringify(input, null, 2));
 
   try {
     const items = await runApifyActorSync({

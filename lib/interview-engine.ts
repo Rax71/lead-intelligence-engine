@@ -492,11 +492,16 @@ function parseEngineOutput(raw: string, profileDraft: Record<string, unknown> = 
     );
   }
 
-  if (typeof parsed.profile_readiness !== "number") {
+  const rawReadiness =
+    typeof parsed.profile_readiness === "number"
+      ? parsed.profile_readiness
+      : parsed.profileReadiness;
+
+  if (typeof rawReadiness !== "number") {
     throw new Error("Resposta do Interview Engine sem profile_readiness numérico.");
   }
 
-  const readiness = Math.max(0, Math.min(100, Math.round(parsed.profile_readiness)));
+  const readiness = Math.max(0, Math.min(100, Math.round(rawReadiness)));
 
   const mergedProfile = {
     ...profileDraft,
@@ -507,7 +512,7 @@ function parseEngineOutput(raw: string, profileDraft: Record<string, unknown> = 
     ),
   };
 
-  const state = parsed.interview_state || {};
+  const state = parsed.interview_state || parsed.interviewState || {};
   const commercialBranch = detectInterviewBranch(mergedProfile);
   const readinessRequirements = getReadinessRequirements(mergedProfile);
 
@@ -586,70 +591,9 @@ export async function runInterviewTurn(params: {
   ];
 
   const raw = await callClaude({ system: SYSTEM_PROMPT, messages });
-  console.log("=== DEBUG RAW INTERVIEW ===");
-  console.log("raw:", raw);
-  console.log("rawCodePoints:", [...raw].filter((c) => /[^\x00-\x7F]/.test(c)).map((c) => `${c}=U+${c.codePointAt(0)?.toString(16).toUpperCase()}`));
-  console.log("===========================");
   return parseEngineOutput(raw, params.profileDraft);
 }
 
 
 
 export { detectInterviewBranch, selectNextCommercialField };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
